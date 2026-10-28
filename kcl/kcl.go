@@ -22,6 +22,10 @@ type Record struct {
 	Data           []byte `json:"data"`
 	PartitionKey   string `json:"partitionKey"`
 	SequenceNumber string `json:"sequenceNumber"`
+	// Local patch for the audit trail (not upstream): the daemon sends both
+	// fields, the stock library drops them.
+	SubSequenceNumber           int64 `json:"subSequenceNumber"`
+	ApproximateArrivalTimestamp int64 `json:"approximateArrivalTimestamp"`
 }
 
 // message format comes from https://github.com/awslabs/amazon-kinesis-client/blob/master/amazon-kinesis-client-multilang/src/main/java/software/amazon/kinesis/multilang/package-info.java
@@ -31,6 +35,13 @@ type message struct {
 	Checkpoint string   `json:"checkpoint"`
 	Records    []Record `json:"records"`
 	Error      string   `json:"error"`
+
+	// Local patch for the audit trail (not upstream): sent with "initialize",
+	// the checkpoint the lease resumes from. The stock library drops it, so a
+	// processor could not tell where KCL would restart relative to what it had
+	// already persisted.
+	SequenceNumber    string `json:"sequenceNumber"`
+	SubSequenceNumber *int64 `json:"subSequenceNumber"`
 }
 
 // statusMessage represents a status.
@@ -166,9 +177,11 @@ func (k *kclProcess) Run() error {
 		switch msg.Action {
 		case "initialize":
 			k.shardID = msg.ShardID
-			k.recordProcessor.Initialize(&InitializationInput{
-				ShardID: k.shardID,
-			})
+			in := &InitializationInput{ShardID: k.shardID, SequenceNumber: msg.SequenceNumber}
+			if msg.SubSequenceNumber != nil {
+				in.SubSequenceNumber = *msg.SubSequenceNumber
+			}
+			k.recordProcessor.Initialize(in)
 
 		case "processRecords":
 			k.recordProcessor.ProcessRecords(&ProcessRecordsInput{

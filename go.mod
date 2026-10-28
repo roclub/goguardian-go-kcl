@@ -2,6 +2,8 @@ module github.com/goguardian/goguardian-go-kcl
 
 go 1.19
 
+toolchain go1.27.3
+
 require (
 	github.com/aws/aws-sdk-go v1.44.245
 	github.com/pkg/errors v0.9.1
